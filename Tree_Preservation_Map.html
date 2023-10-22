@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Tree Preservation Map</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <style>
+        body {
+            background-color: #1d241d;
+            color: #f9f6f3;
+            font-family: 'Garamond';
+        }
+        #title {
+            font-family: 'Garamond';
+            font-weight: bold;
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+        #container {
+            display: flex;
+            flex-direction: row;
+            justify-content: space-between;
+        }
+        #map {
+            width: 75%;
+            height: 600px;
+        }
+        #blurb {
+            width: 23%;
+        }
+        a {
+            color: #2c3ca3;
+        }
+        a:visited {
+            color: #a35c2c;
+        }
+
+        .grayscale {
+    filter: grayscale(100%);
+}
+
+
+    </style>
+</head>
+<body>
+    <div id="title">Bristol Tree Preservation Orders Map</div>
+    <div id="container">
+        <div id="blurb">
+            <p>Hello, Bristol tree enthusiasts! 🌳</p>
+            <p>Curious about the trees in your neighbourhood? Whether they're protected or just wild and free? You're in the right place! This map not only shows trees under <span style="color:#0e6900; background-color:rgba(136, 59, 245, 0.6); font-weight:bold;">Tree Preservation Orders (TPOs)</span>, but also includes a broader dataset of Bristol's trees and biological records of special trees.</p>
+            <p>Trees from Biological Records are shown as coloured dots: <span style="color:#004196; font-weight:bold; background-color:#f9f6f3;">dark blue</span> for veteran or very large trees and <span style="color:#009655; font-weight:bold; background-color:#f9f6f3;">light green</span> for others.</p>
+            <p>Bristol City Council is doing their bit to keep our leafy landscape lush, but they need our help to identify the community's favourite trees.</p>
+            <p>Want to suggest a tree for protection? Click on an unregistered tree, or anywhere on the map, to be taken to our <a href="https://forms.gle/NEiev2KACqqAiFS36" target="_blank">handy pre-filled form</a>, and we'll pass the info onto the council.</p>
+            <p>Click on a tree's canopy or dot for detailed info, including its Latin and common names. Trees with TPOs have dashed outlines on their canopies. The tooltip uses colour and text style to indicate a tree's status: <span style="color:green; font-weight:bold;">green and bold</span> for alive, and <span style="color:red; text-decoration:line-through;">red and struck out</span> for otherwise. Zoom in for a clearer view of individual canopies and tree locations.</p>
+            <p>Please note, trunk and general tree data might be a bit rough around the edges. Any gaps or inaccuracies in the data are for Bristol City Council to address, not us.</p>
+        </div>
+        
+        
+        <div id="map"></div>
+    </div>
+
+    <script>
+        var trunkLayer, canopyLayer;
+
+     // Function to create form URL
+function createFormURL(lat, lng, commonName, latinName) {
+    var treeName = latinName !== 'Unknown' ? `${commonName}+(${latinName})` : commonName;
+    var encodedTreeName = encodeURIComponent(treeName);
+    return `https://docs.google.com/forms/d/e/1FAIpQLScTleQOWw0ZAP9TlQfYLiPtgfOztmwzLU5DMtpF43ur5Kcehg/viewform?usp=pp_url&entry.1588336438=x:${lat},y:${lng}&entry.1395957471=${encodedTreeName}`;
+}
+
+        // Create the map centered over Bristol
+        var map = L.map('map').setView([51.4545, -2.5879], 13);
+    
+// Grayscale tile layer
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors'
+}).addTo(map).getContainer().classList.add('grayscale');
+
+    
+        // Function to add or remove trunk based on zoom level
+        function updateTrunkLayer() {
+            var currentZoom = map.getZoom();
+            if (currentZoom >= 18) {
+                if (!map.hasLayer(trunkLayer)) {
+                    map.addLayer(trunkLayer);
+                }
+            } else {
+                map.removeLayer(trunkLayer);
+            }
+        }
+    
+        // Event listener for zoom changes
+        map.on('zoomend', updateTrunkLayer);
+    
+        fetch('Tree_Preservation_Order_Trunk.geojson')
+        .then(response => response.json())
+        .then(trunkData => {
+            trunkLayer = L.geoJSON(trunkData, {
+                pointToLayer: function (feature, latlng) {
+                    return L.circleMarker(latlng, {
+                        radius: 2.5,
+                        fillColor: "#402213",
+                        color: "#000",
+                        weight: 1,
+                        opacity: 1,
+                        fillOpacity: 0.8
+                    });
+                }
+            }).addTo(map);
+            trunkLayer.bindPopup(function(layer) {
+                var props = layer.feature.properties;
+                return generateTooltip(props, "Trunk");
+            });
+            updateTrunkLayer();
+            return fetch('Tree_Preservation_Order_Canopy_Updated_Tooltip.geojson');
+        })
+        .then(response => response.json())
+        .then(canopyData => {
+            canopyLayer = L.geoJSON(canopyData, {
+                style: {
+                    color: '#883bf5',
+                    weight: 2,
+                    opacity: 0.8,
+                    fillColor: '#0e6900',
+                    fillOpacity: 0.5,
+                    dashArray: '5, 5'
+                },
+                interactive: true
+            }).addTo(map);
+            canopyLayer.bindPopup(function(layer) {
+                var props = layer.feature.properties;
+                return generateTooltip(props, "Canopy");
+            });
+        })
+        .catch(error => console.error('An error occurred:', error));
+    // Function to update Tree layer based on zoom level, similar to updateTrunkLayer
+function updateTreeLayer() {
+    var currentZoom = map.getZoom();
+    if (currentZoom >= 16) {
+        if (!map.hasLayer(treeLayer)) {
+            map.addLayer(treeLayer);
+        }
+    } else {
+        map.removeLayer(treeLayer);
+    }
+}
+
+// Event listener for zoom changes, similar to trunk
+map.on('zoomend', updateTreeLayer);
+
+// Fetch and add new Trees layer
+var treeLayer;
+fetch('Trees_Updated.geojson')
+.then(response => response.json())
+.then(treeData => {
+    treeLayer = L.geoJSON(treeData, {
+        pointToLayer: function (feature, latlng) {
+            return L.circleMarker(latlng, {
+                radius: 3,  // Small size
+                fillColor: "#167010",  // Your specified colour
+                color: "#000",
+                weight: 1,
+                opacity: 1,
+                fillOpacity: 0.8
+            });
+        }
+    });
+    treeLayer.bindPopup(function(layer) {
+    var props = layer.feature.properties;
+    var lat = layer._latlng.lat;
+    var lng = layer._latlng.lng;
+    var latinName = props['LATIN_NAME'] || 'Unknown';
+    var commonName = props['COMMON_NAME'] || 'Unknown';
+
+    var formURL = `https://docs.google.com/forms/d/e/1FAIpQLScTleQOWw0ZAP9TlQfYLiPtgfOztmwzLU5DMtpF43ur5Kcehg/viewform?usp=pp_url&entry.1588336438=x:${lat},y:${lng}&entry.1395957471=${commonName}+(${latinName})`;
+    
+    var tooltipText = '';
+    
+    if (props['DEAD_FLAG'] === null) {
+        tooltipText = `<span style="color:green; font-weight:bold;">${commonName} - ${latinName}</span>`;
+    } else {
+        tooltipText = `<span style="color:red; text-decoration:line-through;">${commonName} - ${latinName}</span>`;
+    }
+    
+    tooltipText += `<br><a href="${formURL}" target="_blank">Suggest for TPO</a>`;
+    
+    return tooltipText;
+});
+
+
+
+
+    updateTreeLayer();  // Call this to make sure it adheres to the initial zoom level
+
+// New code to handle map clicks
+map.on('click', function(e) {
+    var lat = e.latlng.lat;
+    var lng = e.latlng.lng;
+    
+    var popupContent = document.createElement('div');
+    popupContent.innerHTML = '<input type="text" id="treeNameInput" placeholder="Enter tree name">';
+    popupContent.innerHTML += '<button id="suggestButton">Suggest for TPO</button>';
+
+    var popup = L.popup()
+        .setLatLng(e.latlng)
+        .setContent(popupContent)
+        .openOn(map);
+
+    document.getElementById('suggestButton').addEventListener('click', function() {
+        var treeName = document.getElementById('treeNameInput').value || "Unknown";
+        var formURL = createFormURL(lat, lng, treeName, "Unknown");
+        window.open(formURL, '_blank');
+        popup.remove();  // Close the popup
+    });
+});
+
+// Fetch and add Biological Records layer
+var bioLayer;
+fetch('Biological_Records_of_Tree_Species_in_Bristol.geojson')
+.then(response => response.json())
+.then(bioData => {
+    bioLayer = L.geoJSON(bioData, {
+        pointToLayer: function (feature, latlng) {
+            var fillColor;
+            if (feature.properties['Sex__Stage'] === 'veteran or very large tree') {
+                fillColor = "#004196";  // Dark blue
+                radius = 6;  // Larger size for veterans
+            } else {
+                fillColor = "#009655";  // Light green
+                radius = 5;  // Smaller size for others
+            }
+            return L.circleMarker(latlng, {
+                radius: radius,
+                fillColor: fillColor,
+                color: "#000",
+                weight: 1,
+                opacity: 1,
+                fillOpacity: 0.8
+            });
+        }
+    });
+    bioLayer.bindPopup(function(layer) {
+        var props = layer.feature.properties;
+        var commonName = props['Common_Name'] || 'Unknown';
+        var scientificName = props['Scientific_Name'] || 'Unknown';
+        var place = props['Place'] || '';
+        var comments = props['Comments'] || '';
+
+        return `<strong style="font-size:larger;">${commonName}</strong><br><em style="font-size:smaller;">${scientificName}</em><br><span style="font-size:smaller;">${comments} - ${place}</span>`;
+    });
+    bioLayer.addTo(map);
+})
+.catch(error => console.error('An error occurred:', error));
+
+})
+.catch(error => console.error('An error occurred:', error));
+
+
+        function generateTooltip(props, type) {
+            var tooltipContent = '<strong>Tree Type (' + type + '):</strong> ' + (props.TREETYPE ? props.TREETYPE : 'Unknown');
+            if (props.COMMENTS) {
+                tooltipContent += '<br><strong style="color:' + (type === "Trunk" ? "brown" : "#0e6900") + ';">Comments:</strong> ' + props.COMMENTS;
+            }
+            if (props.DATE_CREATED) {
+                tooltipContent += '<br><strong>Date Created:</strong> ' + props.DATE_CREATED;
+            }
+            return tooltipContent;
+        }
+    </script>
+    
+</body>
+</html>
